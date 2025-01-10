@@ -15,6 +15,8 @@ django-debug-toolbar==4.4.6
 
 # Database
 dj-database-url==2.3.0
+psycopg2-binary==2.9.10
+django-timescaledb==0.2.13
 
 # Storage
 whitenoise==6.8.2

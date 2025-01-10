@@ -10,6 +10,8 @@ services:
             dockerfile: docker/Dockerfile.backend
         command: gunicorn wsgi:application -b :8000 --reload
         # command: gunicorn asgi:application -k uvicorn.workers.UvicornWorker -b :8000 --reload
+        environment:
+            - DATABASE_URL=postgres://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
         env_file: .env
         volumes:
             - ./src/backend:/app
@@ -21,7 +23,20 @@ services:
         tty: true
         logging: *default-logging
         depends_on:
+            - db
             - redis
+
+    db:
+        image: postgres:latest
+        env_file: .env
+        environment:
+            - POSTGRES_PASSWORD=${DB_PASSWORD}
+            - POSTGRES_USER=${DB_USERNAME}
+            - POSTGRES_DB=${DB_NAME}
+        ports:
+            - 5432:5432
+        volumes:
+            - ./var/postgres:/var/lib/postgresql/data:delegated
 
     redis:
         image: redis
