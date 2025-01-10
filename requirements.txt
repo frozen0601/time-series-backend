@@ -1,0 +1,31 @@
+Django==5.1.4
+gunicorn==23.0.0
+django-cors-headers==4.6.0
+django-extensions==3.2.3
+dj-rest-auth==5.0.1
+djangorestframework==3.15.2
+django-filter==2.4.0
+drf-extra-fields==3.0.4
+django-redis==5.2.0
+django-extensions==3.2.3
+blessings==1.7
+
+# debug tools
+django-debug-toolbar==4.4.6
+
+# Database
+dj-database-url==2.3.0
+
+# Storage
+whitenoise==6.8.2
+
+# WebSocket
+uvicorn[standard]==0.34.0
+channels==4.2.0
+
+# Celery
+celery[redis]>=5.2.0
+redis>=5.0.0
+
+# ReDoc
+drf-spectacular==0.28.0
