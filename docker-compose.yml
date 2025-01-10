@@ -27,7 +27,7 @@ services:
             - redis
 
     db:
-        image: postgres:latest
+        image: timescale/timescaledb-ha:pg17
         env_file: .env
         environment:
             - POSTGRES_PASSWORD=${DB_PASSWORD}

@@ -29,14 +29,14 @@ class TimeSeriesData(TimescaleModel):
     """Main time series data model"""
 
     user_id = models.UUIDField(db_index=True, default=uuid.uuid4)
-    session_id = models.UUIDField(null=True, db_index=True)
+    session_id = models.UUIDField(null=True, blank=True, db_index=True)
     series = models.ForeignKey(MetricType, on_delete=models.CASCADE, related_name="time_series_data")
     ts = models.DateTimeField(db_index=True)
-    value = models.JSONField()
+    value = models.TextField()
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "series", "ts"]),
+            models.Index(fields=["user_id", "series", "ts"]),
             models.Index(fields=["session_id", "series", "ts"]),
             models.Index(fields=["series", "ts"]),
         ]
