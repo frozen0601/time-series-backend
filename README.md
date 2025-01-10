@@ -1,60 +1,100 @@
-# time-series-backend
 
+## Project Data Modeling
 
-## Time-Series Data Storage Design
+This document outlines the data modeling approach for the time-series backend, focusing on simplicity, performance, and alignment with initial requirements. It also considers extensibility for future needs.
 
-This section describes the design for storing time-series data, prioritizing simplicity and performance for initial requirements.
+### 1. Series Name Representation
 
-### Current Approach: `TextField` with Casting
+How should we represent our metric series names (e.g., `session.gut_health_score`)? I weigh the pros and cons of two options.
 
-The `TimeSeriesData.value` field is currently implemented as a `TextField`.
+#### 1.1 Flat Representation (Current Approach)
 
-**Rationale:**
+The current implementation uses a single `series` field (`CharField`) in `MetricType`.
 
-*   **Simplicity:** Simplifies model code and avoids JSON processing overhead.
-*   **Performance:** Offers comparable or better performance than `JSONField` for single values, especially with TimescaleDB continuous aggregates (pre-calculate aggregations).
-*   **Current Needs:** Aligns with the requirement for each series to have a consistent data type (float, int, rgb string).
+- **Advantages**:
+  - Simplicity: Keeps models and queries straightforward.
+  - Regex Filtering: Directly supports regex filtering using `series__regex`.
+  - Matches Current Needs: Works well for querying by specific series.
 
-**Implementation:**
+- **Implementation**:
+  ```python
+  MetricType.series = models.CharField(max_length=255, unique=True)
+  ```
 
-*   `TimeSeriesData.value`: `models.TextField()`
-*   Validation/Conversion: Handled in `TimeSeriesData.clean()` based on `MetricType.value_type`.
-*   Querying: Values are cast at query time (e.g., `Avg(models.F('value').cast(FloatField()))`).
+- **Example Query**:
+  ```python
+  TimeSeriesData.objects.filter(series__regex=r"^session\.urine\..*")
+  ```
 
-### Future Considerations: Transitioning to `JSONField`
+#### 1.2 Hierarchical Representation (Alternative Considered)
 
-If future requirements include:
+Uses a self-referential `parent` relationship in `MetricType` to split series names into hierarchical fields.
 
-*   Multiple values per data point
-*   Nested data structures
-*   Variable attributes per series
-*   Metadata or contextual information
-*   Arrays of values
+- **Pros**:
+  - **Flexible Queries**: Easily filter or group by hierarchy levels.
+  - **Clearer Validation**: Provides a structured framework for managing series names.
 
-We will transition to `JSONField`.
+- **Cons**:
+  - **Complexity**: Adds recursive lookups and join-heavy queries.
+  - **Performance**: Slower for large datasets or deep hierarchies.
+  - **Overkill**: Current needs are met with simpler regex filtering in the flat model.
+    
+---
 
-**Transition Strategy:**
+### 2. Metric Value Storage
 
-1.  Change `TimeSeriesData.value` from `TextField()` to `JSONField()`.
-2.  (Optional) Implement schema validation in `MetricType` and `TimeSeriesData.clean()`.
+This section evaluates three approaches for storing metric values, based on their simplicity, performance, and future extensibility.
 
-```python
-import jsonschema
-from django.db import models
+#### 2.1 `TextField` with Casting (Current Approach)
 
-class MetricType(models.Model):
-    # ... other fields
-    schema = models.JSONField(null=True, blank=True, help_text="JSON Schema for value validation (optional)")
+The `TimeSeriesData.value` field is implemented as a `TextField`, with type validation and conversion based on `MetricType.value_type`.
 
-class TimeSeriesData(models.Model):
-    # ... other fields
-    value = models.JSONField()
+- **Advantages**:
+  - Simplicity: Straightforward implementation for single, consistent value types per series.
+  - Performance: Efficient enough since we got TimescaleDB's continuous aggregates and pre-calculated queries.
 
-    def clean(self):
-        if self.series.schema:
-            jsonschema.validate(instance=self.value, schema=self.series.schema)
-```
+- **Implementation**:
+  ```python
+  value = models.TextField()
+  ```
 
-### Alternatives Considered: Concrete Table Inheritance
+- **Validation**:
+  Conversion and validation are handled during data ingestion based on the series' `value_type`.
 
-Rejected due to increased complexity and query inefficiency outweighing potential storage benefits.
+- **Querying Example**:
+  ```python
+  Avg(models.F('value').cast(FloatField()))
+  ```
+
+#### 2.2 JSONField (Future-Proof Alternative)
+
+Transitioning to `JSONField` would support nested or complex data structures.
+
+- **Advantages**:
+  - Flexibility: Supports multiple values, nested data, or metadata.
+  - Future-Proof: Accommodates evolving data requirements.
+
+- **Disadvantages**:
+  - Performance Overhead: Adds complexity for single-value metrics.
+
+- **Implementation Example**:
+  ```python
+    import jsonschema
+    
+    class MetricType(models.Model):
+        # other fields
+        schema = models.JSONField(null=True, blank=True)
+    
+    class TimeSeriesData(models.Model):
+        # other fields
+        value = models.JSONField()
+    
+        def clean(self):
+            if self.series.schema:
+                jsonschema.validate(instance=self.value, schema=self.series.schema)
+  ```
+
+#### 2.3 Concrete Table Inheritance (Rejected)
+
+Using separate tables for each metric type could improve storage efficiency but this increase complexity (require extra join) and queries become more complex and less efficient.
+The benefit of slightly reduced storage space for some data types is usually outweighed by the increased query complexity and performance overhead.
