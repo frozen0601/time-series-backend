@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from subway.models import SubwayLine
+from metrics.models import SubwayLine
 from exceptions import StatusUpdateError
 import logging
 

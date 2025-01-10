@@ -6,5 +6,5 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class SubwayConfig(AppConfig):
-    name = "subway"
+class MetricsConfig(AppConfig):
+    name = "metrics"

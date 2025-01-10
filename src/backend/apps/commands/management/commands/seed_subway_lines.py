@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
-from subway.models import SubwayLine
-from subway.mta_data_fetcher import mta_client
+from metrics.models import SubwayLine
+from metrics.mta_data_fetcher import mta_client
 import logging
 
 logger = logging.getLogger(__name__)
