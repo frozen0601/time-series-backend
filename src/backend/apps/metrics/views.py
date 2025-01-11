@@ -1,10 +1,11 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from django.db.models import F, Avg, Max, Min, Value, CharField, FloatField, IntegerField
-from django.db.models.functions import Cast
+from django.db.models import F, Count, Avg, Max, Min, Value, Window, FloatField, IntegerField
+from django.db.models.functions import Cast, FirstValue
 from .models import MetricType, Session, TimeSeriesData
-from .serializers import SessionSerializer
+from .serializers import MetricTypeSerializer, SessionSerializer
 from .filters import UserFilterBackend, TimeWindowFilterBackend, SeriesFilterBackend, SessionFilterBackend
+from .utils import PercentileCont
 import logging
 
 # permission not required
@@ -13,18 +14,21 @@ from rest_framework.permissions import AllowAny
 logger = logging.getLogger(__name__)
 
 
+class MetricTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = MetricType.objects.all()
+    serializer_class = MetricTypeSerializer
+    permission_classes = [AllowAny]
+
+
 class SessionViewSet(viewsets.ModelViewSet):
     queryset = Session.objects.all()
     serializer_class = SessionSerializer
     permission_classes = [AllowAny]
 
     def create(self, request, *args, **kwargs):
-        print("aa")
         serializer = self.get_serializer(data=request.data)
-        print("bb")
         if serializer.is_valid():
             try:
-                print("cc")
                 serializer.save()
                 return Response({"message": "Data ingested successfully"}, status=status.HTTP_201_CREATED)
             except Exception as e:
@@ -32,18 +36,30 @@ class SessionViewSet(viewsets.ModelViewSet):
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def list(self, request, *args, **kwargs):
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return Response(serializer.data)
+
 
 class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
-    WINDOW_CHOICES = {"week": "7 days", "month": "1 month"}
-    AGG_FUNCTIONS = {"avg": Avg, "max": Max, "min": Min}
+    INTERVAL_CHOICES = {"min": "1 min", "week": "1 week", "month": "1 month"}
+    AGG_FUNCTIONS = {
+        "avg": Avg,
+        "max": Max,
+        "min": Min,
+        "count": Count,
+        "median": lambda field: PercentileCont(field, percentile=0.5),
+        "p90": lambda field: PercentileCont(field, percentile=0.9),
+        "p99": lambda field: PercentileCont(field, percentile=0.99),
+    }
     filter_backends = [UserFilterBackend, SessionFilterBackend, SeriesFilterBackend]
 
     def get_queryset(self):
-        queryset = TimeSeriesData.timescale.all()
-        queryset = self.filter_queryset(queryset)
+        return TimeSeriesData.timescale.all()
 
-        window = self.request.query_params.get("window", "week")
+    def _aggregate_timeseries(self, queryset):
+        interval = self.request.query_params.get("interval", "week")
         agg_func_name = self.request.query_params.get("agg_func", "avg")
 
         try:
@@ -51,42 +67,79 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
         except KeyError:
             return TimeSeriesData.timescale.none()
 
-        # Get distinct series types
-        series_types = queryset.values_list("series__series", "series__value_type").distinct()
-
-        # Handle each series type separately
+        series_types = queryset.values_list("series__series", "series__schema").distinct()
         results = []
-        for series_name, value_type in series_types:
+
+        for series_name, schema in series_types:
             series_qs = queryset.filter(series__series=series_name)
+            time_bucket_query = self._get_time_bucket_query(series_qs, interval)
 
-            if value_type in ["float", "int"]:
-                # Cast and aggregate numeric values
-                cast_type = FloatField if value_type == "float" else IntegerField
-                annotations = {"value": agg_func(Cast("value", output_field=cast_type())), "series": Value(series_name)}
+            if self._is_numeric_schema(schema):
+                annotations = self._get_numeric_annotations(series_name, agg_func)
+                series_data = time_bucket_query.annotate(**annotations)
+            elif self._is_rgb_schema(schema):
+                annotations = self._get_rgb_annotations(series_name, agg_func)
+                series_data = time_bucket_query.annotate(**annotations)
             else:
-                # For non-numeric types, just take the first value
-                annotations = {"value": F("value"), "series": Value(series_name)}
+                time_bucket_query = time_bucket_query.values("bucket", "series__series")
+                annotations = self._get_default_annotations(series_name)
+                series_data = time_bucket_query.annotate(**annotations)
+                series_data = series_data.distinct(
+                    "bucket"
+                )  # NOTE: The entries aren't bucketed as expected. Further investigation needed.
 
-            series_data = series_qs.time_bucket(
-                field="time", interval=self.WINDOW_CHOICES[window], annotations=annotations
-            )
             results.extend(series_data)
 
         return results
 
-    def list(self, request, *args, **kwargs):
-        # queryset = self.get_queryset()
-        # use filter
-        queryset = self.get_queryset()
-        data = [{"time": item["bucket"], "value": item["value"], "series": item["series"]} for item in queryset]
+    def _is_rgb_schema(self, schema):
+        """Check if schema is for RGB color"""
+        properties = schema.get("properties", {})
+        return all(key in properties for key in ["r", "g", "b"])
 
-        return Response(
-            {
-                "data": data,
-                "metadata": {
-                    "count": len(data),
-                    "window": request.query_params.get("window", "week"),
-                    "agg_func": request.query_params.get("agg_func", "avg"),
-                },
-            }
-        )
+    def _is_numeric_schema(self, schema):
+        """Check if schema is for numeric value"""
+        properties = schema.get("properties", {})
+        return "value" in properties and properties["value"].get("type") == "number"
+
+    def _get_time_bucket_query(self, series_qs, interval):
+        """Create base time bucket query"""
+        return series_qs.time_bucket(field="time", interval=self.INTERVAL_CHOICES[interval])
+
+    def _get_numeric_annotations(self, series_name, agg_func):
+        """Get annotations for numeric type"""
+        return {
+            "series": Value(series_name),
+            "value": agg_func(Cast("value__value", output_field=FloatField())),
+        }
+
+    def _get_rgb_annotations(self, series_name, agg_func):
+        """Get annotations for RGB type"""
+        return {
+            "series": Value(series_name),
+            "r": agg_func(Cast("value__r", output_field=IntegerField())),
+            "g": agg_func(Cast("value__g", output_field=IntegerField())),
+            "b": agg_func(Cast("value__b", output_field=IntegerField())),
+        }
+
+    def _get_default_annotations(self, series_name):
+        """Get annotations for string type"""
+        return {
+            "series": Value(series_name),
+            "value": Window(expression=FirstValue("value"), partition_by=["bucket"], order_by=F("time").asc()),
+        }
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        aggregated_data = self._aggregate_timeseries(queryset)
+
+        response = {
+            "metadata": {
+                "count": len(aggregated_data),
+                "interval": request.query_params.get("interval", "week"),
+                "agg_func": request.query_params.get("agg_func", "avg"),
+            },
+            "results": aggregated_data,
+        }
+
+        return Response(response)

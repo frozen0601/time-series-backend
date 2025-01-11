@@ -1,8 +1,9 @@
 from timescale.db.models.models import TimescaleModel
 from timescale.db.models.fields import TimescaleDateTimeField
 from django.db import models
-import uuid
 from django.core.exceptions import ValidationError
+import uuid
+import jsonschema
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,10 +13,17 @@ class MetricType(models.Model):
     """Defines metadata about metric series"""
 
     series = models.CharField(max_length=255, unique=True)
-    VALUE_TYPES = (("float", "Float"), ("int", "Integer"), ("rgb", "RGB Color"))
-    value_type = models.CharField(max_length=10, choices=VALUE_TYPES)
+    schema = models.JSONField(help_text="JSON Schema defining the structure and validation rules for the metric")
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        """Validate the schema itself"""
+        try:
+            # Validate schema is valid JSON Schema
+            jsonschema.Draft7Validator.check_schema(self.schema)
+        except jsonschema.exceptions.SchemaError as e:
+            raise ValidationError({"schema": f"Invalid JSON Schema: {str(e)}"})
 
     def __str__(self):
         return self.series
@@ -34,10 +42,10 @@ class Session(models.Model):
     start_ts = models.DateTimeField(null=True, blank=True)  # Start time of the session
 
     def __str__(self):
-        return str(self.session_id)
+        return str(f"{self.user_id} - {self.session_id} - {self.start_ts}")
 
     class Meta:
-        indexes = []
+        ordering = ["-start_ts"]
 
 
 class TimeSeriesData(TimescaleModel):
@@ -45,8 +53,11 @@ class TimeSeriesData(TimescaleModel):
 
     session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="time_series_data")
     series = models.ForeignKey(MetricType, on_delete=models.CASCADE)
-    value = models.TextField()
+    value = models.JSONField()
     time = TimescaleDateTimeField(interval="1 week")  # the end time of the data point
+
+    def __str__(self):
+        return f"{self.session_id} - {self.series} - {self.value}"
 
     class Meta:
         indexes = [
@@ -54,21 +65,12 @@ class TimeSeriesData(TimescaleModel):
         ]
 
     def clean(self):
-        """Validates and converts the metric value based on series type."""
-
+        """Validates the value against the series schema"""
         try:
-            value_type = self.series.value_type
-            if value_type == "float":
-                float(self.value)
-            elif value_type == "int":
-                int(self.value)
-            elif value_type == "rgb":
-                if not isinstance(self.value, str) or not self.value.startswith("#") or len(self.value) != 7:
-                    raise ValueError("Invalid RGB format")
-            else:
-                raise ValueError(f"Unmatch value type: {value_type} for series: {self.series.series}")
-
-        except (ValueError, TypeError) as e:
+            jsonschema.validate(instance=self.value, schema=self.series.schema)
+        except jsonschema.exceptions.ValidationError as e:
+            raise ValidationError({"value": f"Value does not match schema: {str(e)}"})
+        except Exception as e:
             raise ValidationError({"value": str(e)})
 
     def save(self, *args, **kwargs):

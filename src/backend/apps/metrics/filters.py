@@ -1,6 +1,7 @@
 from rest_framework.filters import BaseFilterBackend
 from django.core.exceptions import ValidationError
 from datetime import datetime, timedelta
+import re
 
 
 class UserFilterBackend(BaseFilterBackend):
@@ -30,7 +31,7 @@ class SeriesFilterBackend(BaseFilterBackend):
         series = request.query_params.get("series")
         if series:
             if "*" in series:
-                pattern = series.replace("*", ".*")
+                pattern = re.escape(series).replace("\\*", ".*")
                 return queryset.filter(series__series__regex=pattern)
             return queryset.filter(series__series=series)
         return queryset
