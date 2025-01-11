@@ -3,6 +3,8 @@ from rest_framework.response import Response
 from django.db.models import F, Count, Avg, Max, Min, Value, Window, FloatField, IntegerField
 from django.db.models.functions import Cast, FirstValue
 from rest_framework.permissions import AllowAny
+from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample, inline_serializer
 
 from .models import MetricType, Session, TimeSeriesData
 from .serializers import MetricTypeSerializer, SessionSerializer
@@ -16,12 +18,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(list=extend_schema(description="List all available metric types", tags=["metrics"]))
 class MetricTypeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = MetricType.objects.all()
     serializer_class = MetricTypeSerializer
     permission_classes = [AllowAny]
 
 
+@extend_schema_view(create=extend_schema(description="Create a new session with time series data", tags=["sessions"]))
 class SessionViewSet(viewsets.ModelViewSet):
     queryset = Session.objects.all()
     serializer_class = SessionSerializer
@@ -38,11 +42,91 @@ class SessionViewSet(viewsets.ModelViewSet):
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def list(self, request, *args, **kwargs):
-        serializer = self.get_serializer(self.get_queryset(), many=True)
-        return Response(serializer.data)
+    # def list(self, request, *args, **kwargs):
+    #     serializer = self.get_serializer(self.get_queryset(), many=True)
+    #     return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        description="List aggregated time series data with filtering and aggregation options",
+        tags=["timeseries"],
+        parameters=[
+            OpenApiParameter(
+                name="user_id", type=str, location=OpenApiParameter.QUERY, description="User ID", required=True
+            ),
+            OpenApiParameter(name="session_id", type=str, location=OpenApiParameter.QUERY, description="Session ID"),
+            OpenApiParameter(
+                name="series",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Series name. Supports regex and multiple values (separated by comma)",
+            ),
+            OpenApiParameter(
+                name="interval",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Aggregation interval (min, week, month)",
+                default="week",
+            ),
+            OpenApiParameter(
+                name="start_time", type=str, location=OpenApiParameter.QUERY, description="Start time for filtering"
+            ),
+            OpenApiParameter(
+                name="end_time", type=str, location=OpenApiParameter.QUERY, description="End time for filtering"
+            ),
+            OpenApiParameter(
+                name="agg_func",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Aggregation function (avg, min, max, count)",
+                default="avg",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                name="TimeSeriesDataResponse",
+                fields={
+                    "metadata": {
+                        "count": serializers.IntegerField(),
+                        "interval": serializers.CharField(),
+                        "agg_func": serializers.CharField(),
+                    },
+                    "results": [
+                        {
+                            "bucket": serializers.DateTimeField(),
+                            "series": serializers.CharField(),
+                            "value": serializers.FloatField(),
+                            "r": serializers.FloatField(),
+                            "g": serializers.FloatField(),
+                            "b": serializers.FloatField(),
+                        }
+                    ],
+                },
+            )
+        },
+        examples=[
+            OpenApiExample(
+                "Example Response",
+                value={
+                    "metadata": {"count": 2, "interval": "month", "agg_func": "avg"},
+                    "results": [
+                        {
+                            "bucket": "2023-12-31T19:00:00-05:00",
+                            "series": "session.urine.color",
+                            "r": 127.5,
+                            "g": 50.0,
+                            "b": 0.0,
+                        },
+                        {"bucket": "2023-12-31T19:00:00-05:00", "series": "session.urine.night_count", "value": 1.0},
+                    ],
+                },
+                response_only=True,
+                status_codes=["503"],
+            )
+        ],
+    )
+)
 class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
     INTERVAL_CHOICES = {"min": "1 min", "week": "1 week", "month": "1 month"}

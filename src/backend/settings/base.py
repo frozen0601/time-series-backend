@@ -113,8 +113,8 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "MTA Status Tracker API",
-    "DESCRIPTION": "Real-time NYC subway line status tracking",
+    "TITLE": "Time Series Data API",
+    "DESCRIPTION": "API for ingesting and querying time series data",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
