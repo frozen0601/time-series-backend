@@ -1,5 +1,95 @@
+# Time Series Backend
 
-## Project Data Modeling
+This project is a backend solution for ingesting and querying time series data, built with **Django** and containerized using **Docker**.
+
+It emphasizes performance and maintainability.
+
+### Tech Stack
+-   Backend: Django 5
+-   Database: PostgreSQL + TimescaleDB
+-   Caching: Redis
+-   Containerization: Docker
+
+### Kanban Board
+
+Project tracking is available on the [Kanban Board](https://github.com/users/frozen0601/projects/4).
+
+### Features
+- ingest data through RESTful endpoint `POST api/session/`
+- query aggregated data through RESTful endpoint `GET api/timeseries/`
+- support advanced filter in query, including options to filter by
+  -   `user_id`
+  -   `session_id`
+  -   `series` (supports regex and returning multiple data series)
+  -   `interval` (e.g. `min`, `week`, `month`)
+  -   `start_time`, `end_time`
+  -   `agg_func` (`avg`, `max`, `min`, `count`)
+- bucket data into chuncks of 1-week buckets (PostgreSQL Hypertables)
+- API documentation is available via ReDoc at [http://localhost:8000/redoc/](http://localhost:8000/redoc/).
+
+### Future Work
+- implement continuous aggregates for faster queries
+- set up data compression
+- add percentile-based aggregates (e.g., median, p90, p99).
+
+---
+
+## Setup
+
+1. **Clone the Repository and Navigate to the Folder**
+
+    ```bash
+    git https://github.com/frozen0601/time-series-backend.git
+    cd time-series-backend
+    ```
+2. **Create `.env` at the root of the project with the following context**
+    ```bash
+    DJANGO_SETTINGS_MODULE=settings.base
+    DEBUG=False
+    DB_HOST=db
+    DB_PORT=5432
+    DB_NAME=postgres
+    DB_PASSWORD=postgres
+    DB_USERNAME=postgres
+    ```
+
+2. **(on First Run) Initialize the Project**
+   
+   Run the following command to build the Docker environment and run.
+
+    ```bash
+    make init
+    ```
+
+    `make init` is equivalent to:
+    ```bash
+	docker compose down
+	docker compose build --no-cache
+	docker compose up -d
+	docker compose exec django python manage.py migrate
+	docker compose exec django python manage.py seed_metric_types
+    ```
+
+4. **Run**
+    ```bash
+    docker compose up -d
+    ```
+
+---
+## Why PostgreSQL + TimescaleDB?
+
+My previous experience with continuous status monitoring highlighted the challenges of managing growing time-series data and complex queries. While custom solutions like [data compression](https://github.com/frozen0601/mta-status-tracker/blob/d4367c827a332772e36534a9428138885a9a8f1b/src/backend/apps/subway/models.py#L33C9-L33C25) and metadata-driven retrieval helped, this project demands a more robust approach.
+
+TimescaleDB, built on PostgreSQL, addresses these challenges directly:
+
+*   **Automatic Preprocessing:** TimescaleDB can be set up to automatically preprocesses data into time-based chunks (e.g., daily, monthly). Instead of querying millions of raw records, queries can use pre-aggregated data from a few entries in higher-level chunks.
+*   **Efficient Aggregation:** This dramatically improves query performance, especially for aggregations over large time ranges. (learn more: [video](https://youtu.be/c8_iHabi-nc?si=MP3BRNlinx4P-f_6&t=243))
+*   **Relational Database Benefits:** Building on PostgreSQL provides the advantages of a mature relational database, including structured queries and robust scalability.
+
+Choosing PostgreSQL + TimescaleDB has also influenced key decisions around data modeling and query implementation.
+
+
+## Data Modeling
 
 This document outlines the data modeling approach for the time-series backend, focusing on simplicity, performance, and alignment with initial requirements. It also considers extensibility for future needs.
 
