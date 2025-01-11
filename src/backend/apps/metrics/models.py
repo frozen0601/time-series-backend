@@ -42,7 +42,7 @@ class Session(models.Model):
     start_ts = models.DateTimeField(null=True, blank=True)  # Start time of the session
 
     def __str__(self):
-        return str(f"{self.user_id} - {self.session_id} - {self.start_ts}")
+        return str(f"{self.session_id} - {self.start_ts}")
 
     class Meta:
         ordering = ["-start_ts"]

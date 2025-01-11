@@ -2,14 +2,16 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db.models import F, Count, Avg, Max, Min, Value, Window, FloatField, IntegerField
 from django.db.models.functions import Cast, FirstValue
+from rest_framework.permissions import AllowAny
+
 from .models import MetricType, Session, TimeSeriesData
 from .serializers import MetricTypeSerializer, SessionSerializer
 from .filters import UserFilterBackend, TimeWindowFilterBackend, SeriesFilterBackend, SessionFilterBackend
-from .utils import PercentileCont
+
+# from .utils import PercentileCont
+
 import logging
 
-# permission not required
-from rest_framework.permissions import AllowAny
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +51,9 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
         "max": Max,
         "min": Min,
         "count": Count,
-        "median": lambda field: PercentileCont(field, percentile=0.5),
-        "p90": lambda field: PercentileCont(field, percentile=0.9),
-        "p99": lambda field: PercentileCont(field, percentile=0.99),
+        # "median": lambda field: PercentileCont(field, percentile=0.5),
+        # "p90": lambda field: PercentileCont(field, percentile=0.9),
+        # "p99": lambda field: PercentileCont(field, percentile=0.99),
     }
     filter_backends = [UserFilterBackend, SessionFilterBackend, SeriesFilterBackend, TimeWindowFilterBackend]
 
@@ -81,7 +83,7 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
                 annotations = self._get_rgb_annotations(series_name, agg_func)
                 series_data = time_bucket_query.annotate(**annotations)
             else:
-                time_bucket_query = time_bucket_query.values("bucket", "series__series")
+                time_bucket_query = time_bucket_query.values("bucket")
                 annotations = self._get_default_annotations(series_name)
                 series_data = time_bucket_query.annotate(**annotations)
                 series_data = series_data.distinct(
@@ -126,7 +128,7 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
         """Get annotations for string type"""
         return {
             "series": Value(series_name),
-            "value": Window(expression=FirstValue("value"), partition_by=["bucket"], order_by=F("time").asc()),
+            "value": Window(expression=FirstValue("value__value"), partition_by=["bucket"], order_by=F("time").asc()),
         }
 
     def list(self, request, *args, **kwargs):

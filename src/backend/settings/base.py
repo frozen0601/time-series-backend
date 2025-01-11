@@ -153,7 +153,7 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
-        "status_file": {
+        "log_file": {
             "class": "logging.FileHandler",
             "filename": "logs/status_changes.log",
             "formatter": "status_changes",
@@ -174,11 +174,6 @@ LOGGING = {
             "level": "WARNING",
             "propagate": False,
         },
-        "subway.status_changes": {
-            "handlers": ["console", "status_file"],
-            "level": "INFO",
-            "propagate": False,
-        },
     },
 }
 
@@ -189,16 +184,7 @@ TEST_DISCOVER_PATTERNS = ["test_*.py", "*_test.py", "tests/*.py"]
 
 from datetime import timedelta
 
-CELERY_BEAT_SCHEDULE = {
-    "update-subway-statuses": {
-        "task": "subway.tasks.update_subway_statuses",
-        "schedule": timedelta(seconds=30),
-    },
-    "update-line-durations": {
-        "task": "subway.tasks.update_line_durations",
-        "schedule": timedelta(seconds=60),
-    },
-}
+# CELERY_BEAT_SCHEDULE = {}
 
 if DEBUG == "True":
     INSTALLED_APPS += ("debug_toolbar",)

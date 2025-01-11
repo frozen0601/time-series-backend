@@ -1,5 +1,6 @@
 from rest_framework.filters import BaseFilterBackend
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from datetime import datetime, timedelta
 import re
 
@@ -27,14 +28,27 @@ class TimeWindowFilterBackend(BaseFilterBackend):
 
 
 class SeriesFilterBackend(BaseFilterBackend):
+    def _get_pattern_filter(self, series_pattern):
+        """Convert wildcard pattern to regex filter"""
+        if "*" in series_pattern:
+            pattern = re.escape(series_pattern).replace("\\*", ".*")
+            return Q(series__series__regex=pattern)
+        return Q(series__series=series_pattern)
+
     def filter_queryset(self, request, queryset, view):
         series = request.query_params.get("series")
-        if series:
-            if "*" in series:
-                pattern = re.escape(series).replace("\\*", ".*")
-                return queryset.filter(series__series__regex=pattern)
-            return queryset.filter(series__series=series)
-        return queryset
+        if not series:
+            return queryset
+
+        # Split by comma and strip whitespace
+        series_patterns = [s.strip() for s in series.split(",")]
+
+        # Combine filters with OR
+        series_filter = Q()
+        for pattern in series_patterns:
+            series_filter |= self._get_pattern_filter(pattern)
+
+        return queryset.filter(series_filter)
 
 
 class SessionFilterBackend(BaseFilterBackend):
