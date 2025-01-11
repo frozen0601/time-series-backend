@@ -53,7 +53,7 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
         "p90": lambda field: PercentileCont(field, percentile=0.9),
         "p99": lambda field: PercentileCont(field, percentile=0.99),
     }
-    filter_backends = [UserFilterBackend, SessionFilterBackend, SeriesFilterBackend]
+    filter_backends = [UserFilterBackend, SessionFilterBackend, SeriesFilterBackend, TimeWindowFilterBackend]
 
     def get_queryset(self):
         return TimeSeriesData.timescale.all()
