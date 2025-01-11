@@ -1,4 +1,5 @@
 from timescale.db.models.models import TimescaleModel
+from timescale.db.models.fields import TimescaleDateTimeField
 from django.db import models
 import uuid
 from django.core.exceptions import ValidationError
@@ -25,48 +26,51 @@ class MetricType(models.Model):
         ]
 
 
+class Session(models.Model):
+    """Represents a data collection session."""
+
+    user_id = models.UUIDField(db_index=True, default=uuid.uuid4)
+    session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    start_ts = models.DateTimeField(null=True, blank=True)  # Start time of the session
+
+    def __str__(self):
+        return str(self.session_id)
+
+    class Meta:
+        indexes = []
+
+
 class TimeSeriesData(TimescaleModel):
     """Main time series data model"""
 
-    user_id = models.UUIDField(db_index=True, default=uuid.uuid4)
-    session_id = models.UUIDField(null=True, blank=True, db_index=True)
-    series = models.ForeignKey(MetricType, on_delete=models.CASCADE, related_name="time_series_data")
-    ts = models.DateTimeField(db_index=True)
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="time_series_data")
+    series = models.ForeignKey(MetricType, on_delete=models.CASCADE)
     value = models.TextField()
+    time = TimescaleDateTimeField(interval="1 week")  # the end time of the data point
 
     class Meta:
         indexes = [
-            models.Index(fields=["user_id", "series", "ts"]),
-            models.Index(fields=["session_id", "series", "ts"]),
-            models.Index(fields=["series", "ts"]),
+            models.Index(fields=["session", "series", "time"]),
         ]
 
     def clean(self):
         """Validates and converts the metric value based on series type."""
 
         try:
-            metric_value = self.value.get("value")
-            if not metric_value:
-                raise ValueError("Value field is missing")
-
             value_type = self.series.value_type
-
             if value_type == "float":
-                converted_value = float(metric_value)
+                float(self.value)
             elif value_type == "int":
-                converted_value = int(metric_value)
+                int(self.value)
             elif value_type == "rgb":
-                if not isinstance(metric_value, str) or not metric_value.startswith("#") or len(metric_value) != 7:
+                if not isinstance(self.value, str) or not self.value.startswith("#") or len(self.value) != 7:
                     raise ValueError("Invalid RGB format")
-                converted_value = metric_value
             else:
-                raise ValueError(f"Unknown value type: {value_type}")
-
-            self.value = {"type": value_type, "value": converted_value}
+                raise ValueError(f"Unmatch value type: {value_type} for series: {self.series.series}")
 
         except (ValueError, TypeError) as e:
             raise ValidationError({"value": str(e)})
 
     def save(self, *args, **kwargs):
-        self.full_clean()  # Ensure validation before saving
+        self.full_clean()
         super().save(*args, **kwargs)
