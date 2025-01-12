@@ -119,24 +119,6 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"Created {points_created} total data points"))
 
-    def _test_api_performance(self):
-        """Test actual API endpoint performance"""
-        self.stdout.write("Testing API endpoint performance...")
-
-        # Test Case 1: Month-level aggregation
-        params = {
-            "user_id": "d38834e0-fe46-4bf9-831d-1d5b125bdc9b",
-            "interval": "month",
-            "series": "session.urine.*",
-            "agg_func": "avg",
-            "start_time": "2020-02-01",
-        }
-        start = time.time()
-        response = self.client.get(f"/api/timeseries?{urlencode(params)}")
-        elapsed = time.time() - start
-
-        self.stdout.write(self.style.WARNING(f"Time: {elapsed:.3f}s"))
-
     def _test_query_performance(self):
         """Run a few queries that mimic what TimeSeriesDataViewSet does."""
         self.stdout.write("Testing query performance...")
@@ -195,6 +177,30 @@ class Command(BaseCommand):
                 f"[Query 4] Found {len(q4_list)} buckets in {q4_elapsed:.3f}s (month-level, avg, 'session.urine.*')."
             )
         )
+
+    def _test_api_performance(self):
+        """Test actual API endpoint performance"""
+        self.stdout.write("Testing API endpoint performance...")
+
+        # Test Case 1: Month-level single series avg aggregation
+        params = {
+            "user_id": "d38834e0-fe46-4bf9-831d-1d5b125bdc9b",
+            "interval": "month",
+            "series": "session.gut_health_score",
+            "agg_func": "avg",
+            "start_time": "2020-02-01",
+        }
+        start = time.time()
+        self.client.get(f"/api/timeseries?{urlencode(params)}")
+        elapsed = time.time() - start
+        self.stdout.write(self.style.WARNING(f"[API Test 1] Month-level single series avg aggregation: {elapsed:.3f}s"))
+
+        # Test Case 2: Month-level single series min aggregation
+        params["agg_func"] = "min"
+        start = time.time()
+        self.client.get(f"/api/timeseries?{urlencode(params)}")
+        elapsed = time.time() - start
+        self.stdout.write(self.style.WARNING(f"[API Test 2] Month-level single series min aggregation: {elapsed:.3f}s"))
 
     def _generate_random_value(self, series_name):
         """Generate a random value based on series type."""
