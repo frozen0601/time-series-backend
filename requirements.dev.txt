@@ -21,3 +21,4 @@ google-i18n-address==2.5.2
 debugpy
 django-debug-toolbar==4.4.6
 django-querycount==0.8.3
+Faker==33.3.1
