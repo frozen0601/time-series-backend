@@ -10,7 +10,7 @@ It emphasizes performance and maintainability.
 - [Stress Test](#stress-test)
 - [Why PostgreSQL + TimescaleDB?](#why-postgresql--timescaledb)
 - [Data Modeling](#data-modeling)
-- [Future Work](#future-work)
+- [Future Work and Scale](#future-work-and-scale)
 
 ### Tech Stack
 -   Backend: Django 5
