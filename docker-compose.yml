@@ -36,7 +36,7 @@ services:
         ports:
             - 5432:5432
         volumes:
-            - ./var/postgres:/var/lib/postgresql/data:delegated
+            - db_data:/home/postgres/pgdata/data
 
     redis:
         image: redis
@@ -74,4 +74,4 @@ services:
             - redis
 
 volumes:
-    myapp:
+    db_data:

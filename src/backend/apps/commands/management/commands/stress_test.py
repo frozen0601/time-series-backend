@@ -30,24 +30,18 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self._store_original_state()
 
-        # try:
-        #     with transaction.atomic():
-        #         self._generate_data(options["sessions"], options["points"])
-        #         self._test_query_performance()
-        #         self._test_api_performance()
-        #         self._cleanup()
-        #         # Rolling back everything so DB reverts to original state
-        #         raise Exception("Rollback after performance test")
-        # except Exception as e:
-        #     if str(e) == "Rollback after performance test":
-        #         self.stdout.write(self.style.SUCCESS("Test data rolled back successfully."))
-        #     else:
-        #         self.stderr.write(f"Error: {e}")
-
-        # self._generate_data(options["sessions"], options["points"])
-        self._test_query_performance()
-        self._test_api_performance()
-        self.stdout.write(self.style.SUCCESS("Test complete."))
+        try:
+            with transaction.atomic():
+                self._generate_data(options["sessions"], options["points"])
+                self._test_query_performance()
+                self._test_api_performance()
+                # Rolling back everything so DB reverts to original state
+                raise Exception("Rollback after performance test")
+        except Exception as e:
+            if str(e) == "Rollback after performance test":
+                self.stdout.write(self.style.SUCCESS("Test data rolled back successfully."))
+            else:
+                self.stderr.write(f"Error: {e}")
 
     def _store_original_state(self):
         """Store IDs of existing data."""
