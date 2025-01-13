@@ -188,30 +188,48 @@ class Command(BaseCommand):
             "interval": "month",
             "series": "session.gut_health_score",
             "agg_func": "avg",
-            "start_time": "2020-02-01",
+            "start_time": "2020-01-01",
         }
         start = time.time()
-        self.client.get(f"/api/timeseries?{urlencode(params)}")
+        response = self.client.get(f"/api/timeseries/?{urlencode(params)}")
         elapsed = time.time() - start
-        self.stdout.write(self.style.WARNING(f"[API Test 1] Month-level single series avg aggregation: {elapsed:.3f}s"))
 
-        # Test Case 2: Month-level single series min aggregation
-        params["agg_func"] = "min"
+        response_json = response.json()
+        self.stdout.write(
+            self.style.WARNING(
+                f"[API Test 1] (Month-level, single series, avg):\n"
+                f"  - Response time: {elapsed:.3f}s\n"
+                f"  - Status code: {response.status_code}\n"
+                f"  - Results count: {response_json['metadata']['count']}\n"
+            )
+        )
+
+        # Test Case 2: same but with regex
+        params["series"] = "session.*"
         start = time.time()
-        self.client.get(f"/api/timeseries?{urlencode(params)}")
+        response = self.client.get(f"/api/timeseries/?{urlencode(params)}")
         elapsed = time.time() - start
-        self.stdout.write(self.style.WARNING(f"[API Test 2] Month-level single series min aggregation: {elapsed:.3f}s"))
+
+        response_json = response.json()
+        self.stdout.write(
+            self.style.WARNING(
+                f"[API Test 2] (Month-level, regex, multiple series, avg):\n"
+                f"  - Response time: {elapsed:.3f}s\n"
+                f"  - Status code: {response.status_code}\n"
+                f"  - Results count: {response_json['metadata']['count']}\n"
+            )
+        )
 
     def _generate_random_value(self, series_name):
         """Generate a random value based on series type."""
         if "color" in series_name:
             return {"r": random.randint(0, 255), "g": random.randint(0, 255), "b": random.randint(0, 255)}
         elif "score" in series_name:
-            return random.uniform(0, 100)
+            return {"value": random.uniform(0, 100)}
         elif "count" in series_name:
-            return random.randint(0, 10)
+            return {"value": random.randint(0, 2)}
         else:
-            return fake.text()
+            return {"value": fake.text()}
 
     def _cleanup(self):
         """Remove any newly created data."""

@@ -2,6 +2,8 @@ from rest_framework.filters import BaseFilterBackend
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from datetime import datetime, timedelta
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 import re
 
 
@@ -14,17 +16,35 @@ class UserFilterBackend(BaseFilterBackend):
 
 
 class TimeWindowFilterBackend(BaseFilterBackend):
+    def _parse_datetime(self, date_str):
+        """Parse datetime string and ensure timezone awareness"""
+        if not date_str:
+            return None
+
+        # Try parsing as ISO format first
+        dt = parse_datetime(date_str)
+
+        # If parsing failed or got naive datetime, try parsing as date
+        if not dt:
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+            except ValueError:
+                return None
+
+        # Make timezone aware if naive
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt)
+
+        return dt
+
     def filter_queryset(self, request, queryset, view):
-        start_time = request.query_params.get("start_time")
-        end_time = request.query_params.get("end_time")
+        start_time = self._parse_datetime(request.query_params.get("start_time"))
+        end_time = self._parse_datetime(request.query_params.get("end_time")) or timezone.now()
 
-        # Default to last 7 days if not specified
-        if not end_time:
-            end_time = datetime.now()
-        if not start_time:
-            start_time = end_time - timedelta(days=7)
+        if start_time:
+            queryset = queryset.filter(time__range=[start_time, end_time])
 
-        return queryset.filter(time__range=[start_time, end_time])
+        return queryset
 
 
 class SeriesFilterBackend(BaseFilterBackend):

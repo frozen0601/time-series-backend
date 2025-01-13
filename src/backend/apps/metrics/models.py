@@ -61,7 +61,7 @@ class TimeSeriesData(TimescaleModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=["session", "series", "time"]),
+            models.Index(fields=["time", "series", "session"]),
         ]
 
     def clean(self):

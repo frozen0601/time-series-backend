@@ -215,6 +215,27 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
             "value": Window(expression=FirstValue("value__value"), partition_by=["bucket"], order_by=F("time").asc()),
         }
 
+    def _format_response_data(self, aggregated_data):
+        """Format response data with clean numbers"""
+        formatted_data = []
+
+        for item in aggregated_data:
+            formatted_item = {
+                "bucket": item["bucket"],
+                "series": item["series"],
+            }
+
+            # Handle RGB values
+            if all(k in item for k in ["r", "g", "b"]):
+                formatted_item["value"] = {"r": round(item["r"]), "g": round(item["g"]), "b": round(item["b"])}
+            # Handle numeric values
+            elif "value" in item:
+                formatted_item["value"] = round(item["value"], 2)
+
+            formatted_data.append(formatted_item)
+
+        return formatted_data
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         aggregated_data = self._aggregate_timeseries(queryset)
@@ -225,7 +246,7 @@ class TimeSeriesDataViewSet(viewsets.ReadOnlyModelViewSet):
                 "interval": request.query_params.get("interval", "week"),
                 "agg_func": request.query_params.get("agg_func", "avg"),
             },
-            "results": aggregated_data,
+            "results": self._format_response_data(aggregated_data),
         }
 
         return Response(response)
